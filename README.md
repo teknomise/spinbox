@@ -2,6 +2,8 @@
 
 Spin containers up and down on Railway from a small web page, using Railway's GraphQL API.
 
+Live: https://control-panel-production-014d.up.railway.app (password on request)
+
 ## Why it looks like this
 
 The server holds a Railway token that can create and delete infrastructure, so the interesting part is what it refuses to do:
