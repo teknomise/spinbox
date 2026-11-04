@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spinbox</title>
+<style>
+  :root { --bg:#0f0e17; --panel:#1a1826; --line:#2c2940; --text:#eceaf4; --muted:#9a96b0; --accent:#a78bfa; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif; padding-inline:16px; }
+  main { max-width:720px; margin:48px auto; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 28px; }
+  .launch { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  select,button { font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  button { cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#17132b; font-weight:600; }
+  button:focus-visible,select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #error { color:var(--bad); min-height:22px; margin:0 0 12px; }
+  ul { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+  li { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .info { flex:1; min-width:180px; }
+  .name { font-weight:600; overflow-wrap:anywhere; }
+  .image { color:var(--muted); font-size:13px; font-family:ui-monospace,monospace; overflow-wrap:anywhere; }
+  .status { font-size:13px; display:flex; align-items:center; gap:6px; }
+  .status::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--warn); }
+  .status.ok::before { background:var(--ok); }
+  .status.bad::before { background:var(--bad); }
+  .empty { color:var(--muted); padding:28px; text-align:center; border:1px dashed var(--line); border-radius:10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Spinbox</h1>
+  <p class="sub">Spin containers up and down on Railway.</p>
+  <form class="launch" id="launch">
+    <label for="image" hidden>Image</label>
+    <select id="image"></select>
+    <button class="primary" id="up">Spin up</button>
+  </form>
+  <p id="error" role="alert"></p>
+  <ul id="list" aria-live="polite"></ul>
+  <p class="empty" id="empty" hidden>Nothing running. Pick an image and spin one up.</p>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const removing = new Set();
+  const OK = ["SUCCESS"], BAD = ["CRASHED", "FAILED", "REMOVED"];
+
+  function showError(message) { $("error").textContent = message ?? ""; }
+
+  async function api(path, options) {
+    const res = await fetch(path, options);
+    if (res.status === 204) return null;
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? "Request failed");
+    return body;
+  }
+
+  function row(c) {
+    const li = document.createElement("li");
+    const info = document.createElement("div");
+    info.className = "info";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = c.name;
+    const image = document.createElement("div");
+    image.className = "image";
+    image.textContent = c.image ?? "";
+    info.append(name, image);
+
+    const status = document.createElement("span");
+    const label = removing.has(c.id) ? "REMOVING" : c.status ?? "WAITING";
+    status.className = "status" + (OK.includes(label) ? " ok" : BAD.includes(label) ? " bad" : "");
+    status.textContent = label;
+
+    const down = document.createElement("button");
+    down.textContent = "Spin down";
+    down.setAttribute("aria-label", "Spin down " + c.name);
+    down.disabled = removing.has(c.id);
+    down.onclick = () => spinDown(c.id);
+
+    li.append(info, status, down);
+    return li;
+  }
+
+  async function refresh() {
+    try {
+      const items = await api("/api/containers");
+      $("list").replaceChildren(...items.map(row));
+      $("empty").hidden = items.length > 0;
+    } catch (e) { showError(e.message); }
+  }
+
+  async function spinDown(id) {
+    removing.add(id);
+    showError();
+    try { await api("/api/containers/" + encodeURIComponent(id), { method: "DELETE" }); }
+    catch (e) { showError(e.message); }
+    removing.delete(id);
+    refresh();
+  }
+
+  $("launch").onsubmit = async (event) => {
+    event.preventDefault();
+    showError();
+    $("up").disabled = true;
+    try {
+      await api("/api/containers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: $("image").value }),
+      });
+      await refresh();
+    } catch (e) { showError(e.message); }
+    $("up").disabled = false;
+  };
+
+  api("/api/images").then((images) => {
+    for (const key of images) $("image").append(new Option(key, key));
+  }).catch((e) => showError(e.message));
+
+  refresh();
+  setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+</script>
+</body>
+</html>
