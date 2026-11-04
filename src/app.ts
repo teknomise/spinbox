@@ -14,7 +14,17 @@ export function createApp(containers: ContainerService, password: string, page: 
 
   // The server holds a Railway token, so every other route needs the password.
   app.use("*", basicAuth({ username: "admin", password }));
-  app.use("/api/*", csrf());
+  // Behind Railway's proxy the app sees http while the browser's Origin is https,
+  // so compare hosts. A cross-site page cannot forge either header.
+  app.use("/api/*", csrf({
+    origin: (origin, c) => {
+      try {
+        return new URL(origin).host === c.req.header("host");
+      } catch {
+        return false;
+      }
+    },
+  }));
 
   app.onError((error, c) => {
     if (error instanceof RuleError) return c.json({ error: error.message }, error.status);

@@ -51,6 +51,25 @@ describe("access", () => {
     expect(railway.listServices).not.toHaveBeenCalled();
   });
 
+  it("accepts the app's own page behind an https proxy", async () => {
+    const railway = fakeRailway([{ id: "a", name: "spinbox-nginx-aaaaaa" }]);
+    const res = await build(railway).request("http://internal:8080/api/containers/a", {
+      method: "DELETE",
+      headers: { ...AUTH, Host: "panel.up.railway.app", Origin: "https://panel.up.railway.app" },
+    });
+    expect(res.status).toBe(204);
+  });
+
+  it.each(["https://evil.example", "not a url"])("refuses a delete from origin %s", async (origin) => {
+    const railway = fakeRailway([{ id: "a", name: "spinbox-nginx-aaaaaa" }]);
+    const res = await build(railway).request("http://internal:8080/api/containers/a", {
+      method: "DELETE",
+      headers: { ...AUTH, Host: "panel.up.railway.app", Origin: origin },
+    });
+    expect(res.status).toBe(403);
+    expect(railway.deleteService).not.toHaveBeenCalled();
+  });
+
   it("refuses a cross-site form post", async () => {
     const res = await build(railway).request("/api/containers", {
       method: "POST",
@@ -104,14 +123,14 @@ describe("spin up", () => {
 describe("spin down and list", () => {
   it("deletes its own service", async () => {
     const railway = fakeRailway([{ id: "a", name: "spinbox-nginx-aaaaaa" }]);
-    const res = await build(railway).request("/api/containers/a", { method: "DELETE", headers: { ...AUTH, Origin: "http://localhost" } });
+    const res = await build(railway).request("/api/containers/a", { method: "DELETE", headers: { ...AUTH, Host: "localhost", Origin: "http://localhost" } });
     expect(res.status).toBe(204);
     expect(railway.deleteService).toHaveBeenCalledWith("a", "e");
   });
 
   it("refuses to delete a service it did not create", async () => {
     const railway = fakeRailway([{ id: "c", name: "production-db" }]);
-    const res = await build(railway).request("/api/containers/c", { method: "DELETE", headers: { ...AUTH, Origin: "http://localhost" } });
+    const res = await build(railway).request("/api/containers/c", { method: "DELETE", headers: { ...AUTH, Host: "localhost", Origin: "http://localhost" } });
     expect(res.status).toBe(404);
     expect(railway.deleteService).not.toHaveBeenCalled();
   });
